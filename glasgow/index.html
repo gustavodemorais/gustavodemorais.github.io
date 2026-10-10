@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flink SQL Evolution: Handling Custom CDC with Process Table Functions</title>
+  <meta name="description" content="Links for Gustavo de Morais' talk at Community Over Code, Glasgow 2026: blog post, FLIP-564, and the Flink docs for FROM_CHANGELOG, TO_CHANGELOG and process table functions.">
+  <meta name="theme-color" content="#271122">
+  <meta property="og:title" content="Flink SQL Evolution: Handling Custom CDC with Process Table Functions">
+  <meta property="og:description" content="Blog post, FLIP-564 and Flink docs from the talk at Community Over Code, Glasgow 2026.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://gustavodemorais.github.io/glasgow/">
+  <link rel="canonical" href="https://gustavodemorais.github.io/glasgow/">
+  <style>
+    :root {
+      --plum-deep: #271122;
+      --plum: #5f123e;
+      --mauve: #d9c3d0;
+      --orange: #f6772e;
+      --purple: #b84fc7;
+      --card: rgba(255, 255, 255, 0.06);
+      --card-hover: rgba(255, 255, 255, 0.11);
+      --card-line: rgba(217, 195, 208, 0.22);
+      --band: linear-gradient(90deg, #dd552c, #7a277e 50%, #d22128);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      background: var(--plum-deep);
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.45;
+    }
+
+    main {
+      flex: 1;
+      width: 100%;
+      max-width: 36rem;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 2rem;
+    }
+
+    .event {
+      margin: 0 0 1.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--mauve);
+    }
+    .event span { color: var(--orange); }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.6rem, 6.2vw, 2.25rem);
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      text-wrap: balance;
+    }
+
+    .flip {
+      margin: 0.9rem 0 0;
+      color: var(--mauve);
+      font-size: 1rem;
+    }
+
+    .speaker {
+      margin: 0.35rem 0 0;
+      font-size: 1.05rem;
+    }
+
+    /* The accent rule from the title slide: a gradient line ending in a dot. */
+    .rule {
+      display: flex;
+      align-items: center;
+      margin: 1.4rem 0 2rem;
+    }
+    .rule::before {
+      content: "";
+      width: 5.5rem;
+      height: 3px;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--purple), var(--orange));
+    }
+    .rule::after {
+      content: "";
+      width: 9px;
+      height: 9px;
+      margin-left: 2px;
+      border-radius: 50%;
+      background: var(--orange);
+    }
+
+    h2 {
+      margin: 2rem 0 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--mauve);
+    }
+
+    ul { list-style: none; margin: 0; padding: 0; }
+    li + li { margin-top: 0.65rem; }
+
+    a.card {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+      min-height: 4.25rem;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--card-line);
+      border-radius: 0.9rem;
+      background: var(--card);
+      color: inherit;
+      text-decoration: none;
+      transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    }
+    a.card:hover { background: var(--card-hover); border-color: var(--orange); }
+    a.card:active { transform: scale(0.99); }
+    a.card:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+
+    .icon {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 50%;
+      background: var(--plum);
+    }
+    .icon svg { width: 1.25rem; height: 1.25rem; fill: #fff; }
+    .card.primary .icon { background: var(--orange); }
+
+    .text { flex: 1; min-width: 0; }
+    .title { display: block; font-weight: 600; font-size: 1.02rem; }
+    .sub { display: block; margin-top: 0.1rem; color: var(--mauve); font-size: 0.86rem; }
+
+    .chev { flex: none; width: 1rem; height: 1rem; fill: none; stroke: var(--mauve); stroke-width: 2; }
+
+    .skyline {
+      display: block;
+      width: 100%;
+      height: auto;
+      margin-top: 1.5rem;
+    }
+
+    footer {
+      padding: 0.9rem 1.25rem;
+      background: var(--band);
+      font-size: 0.8rem;
+      font-style: italic;
+      text-align: center;
+    }
+
+    @media (min-width: 40rem) {
+      main { padding-top: 4rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      a.card { transition: none; }
+      a.card:active { transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="event">Community Over Code <span>Glasgow 2026</span></p>
+
+    <h1>Flink SQL Evolution: Handling Custom CDC with Process Table Functions</h1>
+    <p class="flip">FLIP-564: FROM_CHANGELOG and TO_CHANGELOG built-in PTFs</p>
+    <p class="speaker">Gustavo de Morais</p>
+    <div class="rule" aria-hidden="true"></div>
+
+    <h2>Get in touch</h2>
+    <ul>
+      <li>
+        <a class="card" href="https://www.linkedin.com/in/gustavo-demorais/">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4.98 3.500a2.500 2.500 0 1 1 0 5 2.500 2.500 0 0 1 0-5zM3 9.750h4V21H3V9.750zm6.500 0h3.800v1.550h.050c.530-1 1.830-1.800 3.650-1.800 3.900 0 4.500 2.400 4.500 5.700V21h-4v-5.150c0-1.230-.020-2.800-1.700-2.800s-2 1.330-2 2.700V21h-4V9.750z"/></svg></span>
+          <span class="text">
+            <span class="title">LinkedIn</span>
+            <span class="sub">linkedin.com/in/gustavo-demorais</span>
+          </span>
+          <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
+        </a>
+      </li>
+      <li>
+        <a class="card" href="https://github.com/gustavodemorais">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.600-4-1.600-.5-1.400-1.300-1.800-1.300-1.800-1.100-.7.1-.7.1-.7 1.200.1 1.800 1.200 1.800 1.200 1.100 1.800 2.800 1.300 3.500 1 .1-.8.4-1.300.8-1.600-2.700-.3-5.500-1.300-5.500-5.900 0-1.300.5-2.400 1.200-3.200-.1-.3-.5-1.500.1-3.200 0 0 1-.3 3.300 1.200a11.500 11.500 0 0 1 6 0c2.300-1.500 3.300-1.200 3.300-1.200.7 1.700.2 2.900.1 3.200.8.800 1.200 1.900 1.200 3.200 0 4.600-2.800 5.600-5.500 5.900.4.400.8 1.100.8 2.200v3.300c0 .3.200.7.8.6A12 12 0 0 0 12 .5z"/></svg></span>
+          <span class="text">
+            <span class="title">GitHub</span>
+            <span class="sub">github.com/gustavodemorais</span>
+          </span>
+          <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
+        </a>
+      </li>
+    </ul>
+
+    <h2>FROM_CHANGELOG and TO_CHANGELOG</h2>
+    <ul>
+      <li>
+        <a class="card primary" href="https://gustavodemorais.github.io/blog/2026/08/25/flink-sql-changelog-ptfs.html#to-and-from-changelog">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5V3zm9 1.5V8h3.5L14 4.5zM8 11v1.5h8V11H8zm0 3.5V16h8v-1.5H8zM8 18v1.5h5V18H8z"/></svg></span>
+          <span class="text">
+            <span class="title">Blog post</span>
+            <span class="sub">TO_CHANGELOG and FROM_CHANGELOG, explained in writing</span>
+          </span>
+          <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
+        </a>
+      </li>
+      <li>
+        <a class="card" href="https://nightlies.apache.org/flink/flink-docs-master/docs/sql/reference/queries/changelog/">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h7a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4V4zm16 0h-5a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h5V4z"/></svg></span>
+          <span class="text">
+            <span class="title">Changelog conversion</span>
+            <span class="sub">Syntax and examples for FROM_CHANGELOG and TO_CHANGELOG</span>
+          </span>
+          <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
+        </a>
+      </li>
+      <li>
+        <a class="card" href="https://cwiki.apache.org/confluence/spaces/FLINK/pages/406620639/FLIP-564+Support+FROM_CHANGELOG+and+TO_CHANGELOG+built-in+PTFs">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-4 12.74V17h8v-2.26A7 7 0 0 0 12 2zM9 18.5V20h6v-1.5H9zm1 3V22h4v-.5h-4z"/></svg></span>
+          <span class="text">
+            <span class="title">FLIP-564</span>
+            <span class="sub">The design proposal on the Apache Flink wiki</span>
+          </span>
+          <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
+        </a>
+      </li>
+    </ul>
+
+    <h2>Write your own PTF</h2>
+    <ul>
+      <li>
+        <a class="card" href="https://nightlies.apache.org/flink/flink-docs-master/docs/dev/table/functions/ptfs/#process-table-functions-ptfs">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h7a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4V4zm16 0h-5a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h5V4z"/></svg></span>
+          <span class="text">
+            <span class="title">Process table functions</span>
+            <span class="sub">Write your own PTF: state, timers, changelogs</span>
+          </span>
+          <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
+        </a>
+      </li>
+    </ul>
+  </main>
+
+  <img class="skyline" src="skyline.jpg" width="1600" height="358" alt="">
+  <footer>October 11-14, 2026 &middot; Glasgow, Scotland</footer>
+</body>
+</html>
